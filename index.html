@@ -1,0 +1,223 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AdPaisa</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src='//libtl.com/sdk.js' data-zone='12225505' data-sdk='show_12225505'></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:18px;background:#080d19;color:#fff;font-family:Arial,sans-serif}
+.header{display:flex;justify-content:space-between;align-items:center;margin:8px 0 22px}
+.logo{font-size:25px;font-weight:800;color:#65a8ff}
+.user{color:#aebbd0;font-size:13px}
+.card{background:#141e30;border:1px solid #263650;border-radius:18px;padding:18px;margin-bottom:15px}
+.label{font-size:12px;color:#9eacc2}
+.balance{font-size:36px;font-weight:bold;margin:10px 0}
+h3{font-size:17px;margin:0 0 12px}
+p{color:#aebbd0;font-size:13px;line-height:1.5}
+button{width:100%;border:0;border-radius:12px;padding:14px;background:#3988ff;color:white;font-size:15px;font-weight:bold;margin-top:10px}
+button:disabled{opacity:.5}
+.secondary{background:#263650}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid .card{margin:0}
+input{width:100%;padding:13px;border-radius:10px;border:1px solid #34445e;background:#0b1424;color:white;margin:6px 0 12px}
+.status{font-size:12px;color:#fbbf24;margin-top:12px}
+.item{padding:10px 0;border-bottom:1px solid #29364a;font-size:13px;color:#d7e1f1}
+.footer{text-align:center;color:#71809a;font-size:11px;margin:25px 0}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+ <div class="logo">💎 AdPaisa</div>
+ <div class="user" id="username">Welcome!</div>
+</div>
+
+<div class="card">
+ <div class="label">TOTAL WALLET BALANCE</div>
+ <div class="balance">₹<span id="balance">0.00</span></div>
+ <p>Your available rewards</p>
+</div>
+
+<div class="card">
+ <h3>🎬 Watch Ads & Earn</h3>
+ <p>Tap below to watch an available advertisement.</p>
+ <button id="watchBtn" onclick="watchAd()">▶ Watch Ad</button>
+ <div class="status" id="adStatus">Ready</div>
+</div>
+
+<div class="grid">
+ <div class="card">
+  <h3>👥 Referrals</h3>
+  <p>Invite friends and check your referral details.</p>
+  <button class="secondary" onclick="loadReferral()">My Referrals</button>
+ </div>
+ <div class="card">
+  <h3>🏆 Leaderboard</h3>
+  <p>See the top earners.</p>
+  <button class="secondary" onclick="loadLeaderboard()">View</button>
+ </div>
+</div>
+
+<div class="card" style="margin-top:15px">
+ <h3>💸 Withdraw Money</h3>
+ <p>Minimum withdrawal ₹100</p>
+
+ <label class="label">Amount (₹)</label>
+ <input id="amount" type="number" min="100" placeholder="Enter amount">
+
+ <label class="label">Mobile Number</label>
+ <input id="phone" type="tel" placeholder="Enter mobile number">
+
+ <label class="label">UPI ID</label>
+ <input id="upi" type="text" placeholder="example@upi">
+
+ <button onclick="withdraw()">Submit Withdrawal Request</button>
+ <div class="status" id="withdrawStatus"></div>
+</div>
+
+<div class="card">
+ <h3>📜 Earning History</h3>
+ <div id="history"><p>Loading history...</p></div>
+</div>
+
+<div class="card">
+ <h3>📊 Results</h3>
+ <div id="results"><p>Tap Referrals or Leaderboard to view details.</p></div>
+</div>
+
+<div class="footer">AdPaisa • Rewards Dashboard</div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if(tg){tg.ready();tg.expand();}
+
+// API address is added automatically by main.py
+const API_URL = new URLSearchParams(location.search).get("api") || "";
+
+function apiHeaders(){
+ return {
+  "Content-Type":"application/json",
+  "X-Telegram-Init-Data":tg?.initData || ""
+ };
+}
+
+async function api(path, options={}){
+ if(!API_URL) throw new Error("Backend URL is not connected yet.");
+ const response=await fetch(API_URL.replace(/\/$/,"")+path,{
+  ...options,
+  headers:{...apiHeaders(),...(options.headers||{})}
+ });
+ const data=await response.json();
+ if(!response.ok) throw new Error(data.detail||data.message||"Request failed");
+ return data;
+}
+
+function message(text){
+ if(tg?.showAlert) tg.showAlert(text);
+ else alert(text);
+}
+
+async function loadUser(){
+ try{
+  const data=await api("/api/user");
+  const user=data.user||data;
+  document.getElementById("balance").textContent=
+   Number(user.balance||0).toFixed(2);
+  document.getElementById("username").textContent=
+   user.username ? "@"+user.username : "Welcome!";
+  const history=data.history||[];
+  document.getElementById("history").innerHTML=history.length
+   ? history.map(x=>`<div class="item">${safe(x.description||"Reward")} — ₹${Number(x.amount||0).toFixed(2)}</div>`).join("")
+   : "<p>No transactions yet.</p>";
+ }catch(e){
+  document.getElementById("history").textContent=e.message;
+ }
+}
+
+function safe(value){
+ return String(value).replace(/[&<>"']/g,c=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ }[c]));
+}
+
+async function watchAd(){
+ const btn=document.getElementById("watchBtn");
+ const status=document.getElementById("adStatus");
+
+ if(!tg?.initData){
+  message("Please open this app inside Telegram.");
+  return;
+ }
+ if(typeof window.show_12225505!=="function"){
+  message("Monetag SDK is not loaded. Please try again later.");
+  return;
+ }
+
+ btn.disabled=true;
+ status.textContent="Opening advertisement...";
+
+ try{
+  const ymid="u"+Date.now()+"_"+Math.random().toString(36).slice(2,9);
+  await window.show_12225505({
+   ymid:ymid,
+   requestVar:"watch-button"
+  });
+  status.textContent="Ad session finished. Reward will be updated only after server verification.";
+ }catch(e){
+  status.textContent="Advertisement could not be opened. Please try again later.";
+ }finally{
+  btn.disabled=false;
+ }
+}
+
+async function withdraw(){
+ const amount=Number(document.getElementById("amount").value);
+ const phone=document.getElementById("phone").value.trim();
+ const upi=document.getElementById("upi").value.trim();
+ const status=document.getElementById("withdrawStatus");
+
+ if(amount<100||!phone||!upi){
+  status.textContent="Enter a valid amount, mobile number and UPI ID.";
+  return;
+ }
+
+ try{
+  const data=await api("/api/withdraw",{
+   method:"POST",
+   body:JSON.stringify({amount,phone,upi})
+  });
+  status.textContent=data.message||"Request submitted.";
+  loadUser();
+ }catch(e){status.textContent=e.message;}
+}
+
+async function loadReferral(){
+ try{
+  const d=await api("/api/referral");
+  document.getElementById("results").textContent=
+   JSON.stringify(d);
+ }catch(e){message(e.message);}
+}
+
+async function loadLeaderboard(){
+ try{
+  const d=await api("/api/leaderboard");
+  const items=d.items||[];
+  document.getElementById("results").innerHTML=items.length
+   ? items.map((x,i)=>`<div class="item">#${i+1} ${safe(x.username||"User")} — ₹${Number(x.balance||0).toFixed(2)}</div>`).join("")
+   : "<p>No leaderboard data yet.</p>";
+ }catch(e){message(e.message);}
+}
+
+loadUser();
+</script>
+</body>
+  </html>
+  
