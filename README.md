@@ -1,0 +1,2 @@
+# adpaisa
+A earning bot
